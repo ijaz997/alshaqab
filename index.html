@@ -2901,6 +2901,18 @@ function renderCatering() {
   const mealFilter = state._cateringFilter || 'all';
   const filteredAte = mealFilter === 'all' ? ate : ate.filter(m => m.mealType === mealFilter);
 
+  // Pre-compute not-yet-eaten list
+  const eatenGids = new Set(meals.map(m => m.gid));
+  const checkedInToday = state.checkins.filter(c => c.eventId === ev.id && c.day === state.activeDay && !c.checkOut);
+  const notEaten = checkedInToday.filter(c => !eatenGids.has(c.gid));
+  const notEatenRows = notEaten.length === 0
+    ? '<tr><td colspan="4" class="empty"><p style="text-align:center">Everyone has eaten today!</p></td></tr>'
+    : notEaten.map(c => {
+        const evRegNE = state.eventVolunteers.find(x => x.eventId === c.eventId && x.gid === c.gid);
+        const areaLabel = c.area || evRegNE?.area || '—';
+        return '<tr><td><strong>' + c.volNumber + '</strong></td><td>' + c.name + '</td><td><span class="tag">' + areaLabel + '</span></td><td>' + formatTime(c.checkIn) + '</td></tr>';
+      }).join('');
+
   document.getElementById('content').innerHTML = `
     <div class="page-header"><h2>Catering Station</h2><p>${formatDateShort(state.activeDay)}</p></div>
     <div class="card">
@@ -2920,31 +2932,11 @@ function renderCatering() {
       </table>
     </div>
     <div class="card">
-      <div class="card-title">🔴 Not Yet Eaten (${(() => {
-        const eatenGids = new Set(meals.map(m => m.gid));
-        const checkedInToday = state.checkins.filter(c => c.eventId === ev.id && c.day === state.activeDay && !c.checkOut);
-        return checkedInToday.filter(c => !eatenGids.has(c.gid)).length;
-      })()})</div>
+      <div class="card-title">🔴 Not Yet Eaten (${notEaten.length})</div>
       <div style="overflow-x:auto">
       <table>
         <thead><tr><th>Vol #</th><th>Name</th><th>Area</th><th>Check-In</th></tr></thead>
-        <tbody>${(() => {
-          const eatenGids = new Set(meals.map(m => m.gid));
-          const checkedInToday = state.checkins.filter(c => c.eventId === ev.id && c.day === state.activeDay && !c.checkOut);
-          const notEaten = checkedInToday.filter(c => !eatenGids.has(c.gid));
-          const evRegMap = {};
-          notEaten.forEach(c => {
-            const evReg = state.eventVolunteers.find(x => x.eventId === c.eventId && x.gid === c.gid);
-            evRegMap[c.gid] = c.area || evReg?.area || '—';
-          });
-          if (notEaten.length === 0) return '<tr><td colspan="4" class="empty"><p>Everyone has eaten today 🎉</p></td></tr>';
-          return notEaten.map(c => `<tr>
-            <td><strong>${c.volNumber}</strong></td>
-            <td>${c.name}</td>
-            <td><span class="tag">${evRegMap[c.gid]}</span></td>
-            <td>${formatTime(c.checkIn)}</td>
-          </tr>`).join('');
-        })()}</tbody>
+        <tbody>${notEatenRows}</tbody>
       </table>
       </div>
     </div>
