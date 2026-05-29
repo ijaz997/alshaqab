@@ -972,7 +972,7 @@ function buildSidebar() {
       items.push(['catering','🍽️','Catering']);
       items.push(['checkin-list','👥',"Today's Volunteers"]);
       items.push(['catering-status','🍽️','Catering Status']);
-      items.push(['vest','🦺','Vest Return (Check Out)' + (pendingVestForReg ? ` <span class="pill pill-warn">${pendingVestForReg}</span>` : '')]);
+      items.push(['vest','🦺','Check Out' + (pendingVestForReg ? ` <span class="pill pill-warn">${pendingVestForReg}</span>` : '')]);
       items.push(['gifts','🎁','Gifts']);
       items.push({ section: 'Vouchers' });
       items.push(['voucher-generator','📥','Voucher Generator']);
@@ -1003,7 +1003,7 @@ function buildSidebar() {
     items.push({ section: ev.name });
     items.push(['dashboard','📊','Dashboard']);
     items.push(['checkin','✓','Check-In/Out']);
-    items.push(['vest','🦺','Vest Return (Check Out)' + (pendingVestForReg ? ` <span class="pill pill-warn">${pendingVestForReg}</span>` : '')]);
+    items.push(['vest','🦺','Check Out' + (pendingVestForReg ? ` <span class="pill pill-warn">${pendingVestForReg}</span>` : '')]);
     items.push(['gifts','🎁','Gifts']);
     items.push(['volunteers','👥','Volunteer Details']);
     items.push(['voucher-generator','📥','Voucher Generator']);
@@ -2285,8 +2285,15 @@ function renderDashboard() {
   // Top areas
   const breakdown = {};
   state.functionalAreas.forEach(a => breakdown[a] = { onSite: 0, total: 0 });
-  state.eventVolunteers.filter(v => v.eventId === ev.id).forEach(v => { if (breakdown[v.area]) breakdown[v.area].total++; });
-  onSiteList.forEach(c => { if (breakdown[c.area]) breakdown[c.area].onSite++; });
+  state.eventVolunteers.filter(v => v.eventId === ev.id).forEach(v => {
+    const area = v.area || '';
+    if (breakdown[area]) breakdown[area].total++;
+  });
+  onSiteList.forEach(c => {
+    const evRegD = state.eventVolunteers.find(x => x.eventId === c.eventId && x.gid === c.gid);
+    const area = c.area || evRegD?.area || '';
+    if (breakdown[area]) breakdown[area].onSite++;
+  });
 
   // Meal breakdown
   const mealBreakdown = { Breakfast: 0, Lunch: 0, Dinner: 0, Snack: 0 };
@@ -2354,7 +2361,7 @@ function renderDashboard() {
         <div class="card">
           <div class="card-title">📊 On-Site by Functional Area</div>
           <table>
-            <thead><tr><th>Area</th><th style="text-align:center">On-Site Now</th><th style="text-align:center">Total Assigned</th><th>Coverage</th></tr></thead>
+            <thead><tr><th>Area</th><th style="text-align:center">On-Site Now</th><th style="text-align:center">Total Assigned</th><th>Attendance</th></tr></thead>
             <tbody>${state.functionalAreas.map(a => {
               const b = breakdown[a];
               if (b.total === 0 && b.onSite === 0) return '';
@@ -2364,7 +2371,7 @@ function renderDashboard() {
                 <td><strong>${a}</strong></td>
                 <td style="text-align:center"><span class="pill pill-success">${b.onSite}</span></td>
                 <td style="text-align:center">${b.total}</td>
-                <td>${bar} <span class="text-muted" style="font-size:12px">${pct}%</span></td>
+                <td>${bar} <span class="text-muted" style="font-size:12px">${b.onSite}/${b.total} (${pct}%)</span></td>
               </tr>`;
             }).join('')}</tbody>
           </table>
@@ -2389,11 +2396,10 @@ function renderDashboard() {
           <table>
             <thead><tr><th>Metric</th><th>Value</th></tr></thead>
             <tbody>
-              <tr><td>Total Hours Logged Today</td><td><strong>${totalHoursToday.toFixed(1)}</strong> hours</td></tr>
+              <tr><td>Total Hours Logged Today</td><td><strong>${fmtHM(totalHoursToday * 3600000)}</strong> hrs</td></tr>
               <tr><td>Check-Ins Today</td><td>${dayCheckins.length}</td></tr>
               <tr><td>Check-Outs Today</td><td>${checkedOut}</td></tr>
-              <tr><td>Vests Returned Today</td><td>${vests}</td></tr>
-              <tr><td>Average Hours per Volunteer</td><td>${dayCheckins.length > 0 ? (totalHoursToday / dayCheckins.length).toFixed(1) : '0'} hrs</td></tr>
+              <tr><td>Average Hours per Volunteer</td><td>${dayCheckins.length > 0 ? fmtHM((totalHoursToday / dayCheckins.length) * 3600000) : '0:00'} hrs</td></tr>
             </tbody>
           </table>
         </div>
@@ -2429,11 +2435,7 @@ function renderDashboard() {
           </div>`).join('')}
         </div>` : ''}
 
-        ${pendingVest > 0 ? `<div class="card" style="background:rgba(201,145,58,.1);border-left:3px solid var(--warn)">
-          <div class="card-title" style="font-size:15px">⏳ Pending Vest Returns</div>
-          <p style="font-size:13px;margin-bottom:10px">${pendingVest} volunteer(s) waiting for vest collection</p>
-          <button class="btn btn-warn btn-sm btn-block" onclick="navigate('vest')">Go to Vest Returns →</button>
-        </div>` : ''}
+        
       </div>
     </div>
     <style>@media(max-width:768px){#dashGrid{grid-template-columns:repeat(2,1fr)!important}}@media(max-width:400px){#dashGrid{grid-template-columns:1fr!important}}</style>`;
@@ -2918,6 +2920,35 @@ function renderCatering() {
       </table>
     </div>
     <div class="card">
+      <div class="card-title">🔴 Not Yet Eaten (${(() => {
+        const eatenGids = new Set(meals.map(m => m.gid));
+        const checkedInToday = state.checkins.filter(c => c.eventId === ev.id && c.day === state.activeDay && !c.checkOut);
+        return checkedInToday.filter(c => !eatenGids.has(c.gid)).length;
+      })()})</div>
+      <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Vol #</th><th>Name</th><th>Area</th><th>Check-In</th></tr></thead>
+        <tbody>${(() => {
+          const eatenGids = new Set(meals.map(m => m.gid));
+          const checkedInToday = state.checkins.filter(c => c.eventId === ev.id && c.day === state.activeDay && !c.checkOut);
+          const notEaten = checkedInToday.filter(c => !eatenGids.has(c.gid));
+          const evRegMap = {};
+          notEaten.forEach(c => {
+            const evReg = state.eventVolunteers.find(x => x.eventId === c.eventId && x.gid === c.gid);
+            evRegMap[c.gid] = c.area || evReg?.area || '—';
+          });
+          if (notEaten.length === 0) return '<tr><td colspan="4" class="empty"><p>Everyone has eaten today 🎉</p></td></tr>';
+          return notEaten.map(c => `<tr>
+            <td><strong>${c.volNumber}</strong></td>
+            <td>${c.name}</td>
+            <td><span class="tag">${evRegMap[c.gid]}</span></td>
+            <td>${formatTime(c.checkIn)}</td>
+          </tr>`).join('');
+        })()}</tbody>
+      </table>
+      </div>
+    </div>
+    <div class="card">
       <div class="card-title">📋 Already Ate Today (${filteredAte.length})
         <div class="row">
           <label style="margin:0;text-transform:none">Filter:</label>
@@ -3107,7 +3138,7 @@ function renderVest() {
   const total = state.checkins.filter(c => c.eventId === ev.id && c.day === day && (areaFilter === 'all' || c.area === areaFilter)).length;
 
   document.getElementById('content').innerHTML = `
-    <div class="page-header"><h2>Vest Return (Check Out)</h2><p>${formatDateShort(day)} — Collect vests when volunteers leave</p></div>
+    <div class="page-header"><h2>Check Out</h2><p>${formatDateShort(day)} — Collect vests when volunteers leave</p></div>
 
     <div class="row" style="margin-bottom:16px;align-items:center">
       <input type="text" placeholder="🔍 Search by name, V#, phone" value="${state._vestSearchQ || ''}" oninput="state._vestSearchQ = this.value; safeRefresh(()=>navigate('vest'))" id="vestSearchInput" style="max-width:300px"/>
@@ -3360,11 +3391,14 @@ function renderGifts() {
               <td>${v.name}</td>
               <td><span class="tag">${v.area}</span></td>
               ${eventGifts.map(g => {
-                const collected = state.giftCollections.find(gc => gc.eventId === ev.id && gc.gid === v.gid && gc.giftId === g.id);
-                if (collected) {
-                  return `<td style="text-align:center"><button class="btn btn-success btn-sm" ${canMarkCollection ? `onclick="toggleGiftCollection('${v.gid}','${g.id}')"` : 'disabled'} title="${formatTime(collected.collectedAt)} by ${collected.by}">✓ Collected</button></td>`;
+                const giftCount = state.giftCollections.filter(gc => gc.eventId === ev.id && gc.gid === v.gid && gc.giftId === g.id).length;
+                if (giftCount > 0) {
+                  return `<td style="text-align:center">
+                    <button class="btn btn-success btn-sm" ${canMarkCollection ? `onclick="addGiftCollection('${v.gid}','${g.id}')"` : 'disabled'} style="margin-bottom:2px">✓ ${giftCount}×</button>
+                    ${canMarkCollection ? `<button class="btn btn-ghost btn-sm" onclick="undoGiftCollection('${v.gid}','${g.id}')" title="Remove last" style="padding:2px 6px;font-size:11px">−</button>` : ''}
+                  </td>`;
                 } else {
-                  return `<td style="text-align:center">${canMarkCollection ? `<button class="btn btn-ghost btn-sm" onclick="toggleGiftCollection('${v.gid}','${g.id}')">Mark Collected</button>` : '<span class="text-muted">—</span>'}</td>`;
+                  return `<td style="text-align:center">${canMarkCollection ? `<button class="btn btn-ghost btn-sm" onclick="addGiftCollection('${v.gid}','${g.id}')">Give</button>` : '<span class="text-muted">—</span>'}</td>`;
                 }
               }).join('')}
             </tr>`).join('')}
@@ -3429,26 +3463,30 @@ async function deleteGift(id) {
   toast('Gift removed'); navigate('gifts');
 }
 
-async function toggleGiftCollection(gid, giftId) {
+async async function addGiftCollection(gid, giftId) {
   const ev = currentEvent();
   if (!ev) return;
-  const existing = state.giftCollections.find(gc => gc.eventId === ev.id && gc.gid === gid && gc.giftId === giftId);
-  if (existing) {
-    // Toggle off — remove the collection record
-    if (!confirm('Mark as NOT collected? (Undo collection)')) return;
-    state.giftCollections = state.giftCollections.filter(gc => gc.id !== existing.id);
-    await save('giftCollections');
-    toast('Marked as not collected');
-  } else {
-    state.giftCollections.push({
-      id: 'GC-' + Date.now() + '-' + Math.random().toString(36).slice(2,5),
-      eventId: ev.id, gid, giftId,
-      collectedAt: Date.now(),
-      by: state.user.name, byUserId: state.user.id
-    });
-    await save('giftCollections');
-    toast('✓ Marked as collected');
-  }
+  state.giftCollections.push({
+    id: 'GC-' + Date.now() + '-' + Math.random().toString(36).slice(2,5),
+    eventId: ev.id, gid, giftId,
+    collectedAt: Date.now(),
+    by: state.user.name, byUserId: state.user.id
+  });
+  await save('giftCollections');
+  toast('Gift given ✓');
+  navigate('gifts');
+}
+
+async function undoGiftCollection(gid, giftId) {
+  const ev = currentEvent();
+  if (!ev) return;
+  const records = state.giftCollections.filter(gc => gc.eventId === ev.id && gc.gid === gid && gc.giftId === giftId);
+  if (records.length === 0) return;
+  if (!confirm('Remove 1 gift from this volunteer?')) return;
+  const lastId = records[records.length - 1].id;
+  state.giftCollections = state.giftCollections.filter(gc => gc.id !== lastId);
+  await save('giftCollections');
+  toast('Gift removed');
   navigate('gifts');
 }
 
@@ -4214,7 +4252,7 @@ function renderDailyReport() {
         <h3>Day Summary</h3>
         <div class="report-stats">
           <div class="report-stat"><div class="num">${checkins.length}</div><div class="lbl">Check-Ins</div></div>
-          <div class="report-stat"><div class="num">${totalHours.toFixed(1)}</div><div class="lbl">Hours</div></div>
+          <div class="report-stat"><div class="num">${fmtHM(totalHours * 3600000)}</div><div class="lbl">Hours</div></div>
           <div class="report-stat"><div class="num">${meals.length}</div><div class="lbl">Meals</div></div>
           <div class="report-stat"><div class="num">${vests.length}</div><div class="lbl">Vests</div></div>
         </div>
@@ -4225,7 +4263,7 @@ function renderDailyReport() {
         <table class="report-table">
           <thead><tr><th>Vol #</th><th>Name</th><th>Area</th><th>In</th><th>Out</th><th>Hours</th><th>Meals</th></tr></thead>
           <tbody>${checkins.map(c => {
-            const hrs = c.checkOut ? ((c.checkOut - c.checkIn)/3600000).toFixed(1) : '—';
+            const hrs = c.checkOut ? fmtHM(c.checkOut - c.checkIn) : '—';
             const myMeals = meals.filter(m => m.gid === c.gid).length;
             return `<tr><td>${c.volNumber}</td><td>${c.name}</td><td>${c.area}</td><td>${formatTime(c.checkIn)}</td><td>${c.checkOut ? formatTime(c.checkOut) : '—'}</td><td><strong>${hrs}</strong></td><td>${myMeals}</td></tr>`;
           }).join('')}</tbody>
@@ -4388,7 +4426,7 @@ function renderMyShift() {
     sectionTitle = `My Team (${myArea})`;
     columns = ['Vol #','Name','Phone','Status','Hours'];
     rowFn = r => {
-      const hrs = r.ci?.checkOut ? ((r.ci.checkOut - r.ci.checkIn)/3600000).toFixed(1) : '—';
+      const hrs = r.ci?.checkOut ? fmtHM(r.ci.checkOut - r.ci.checkIn) : '—';
       const status = !r.ci ? 'Not arrived' : r.ci.checkOut ? 'Checked out' : 'On-site';
       return [r.volNumber, r.name, r.phone, status, hrs];
     };
@@ -5455,6 +5493,14 @@ function formatDOB(val) {
     return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   }
   return String(val); // fallback: show as-is
+}
+
+function fmtHM(totalMs) {
+  if (!totalMs || totalMs <= 0) return '0:00';
+  const totalMin = Math.round(totalMs / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h + ':' + String(m).padStart(2, '0');
 }
 
 function formatTime(ts) { return ts ? new Date(ts).toLocaleString('en-GB', {hour:'2-digit',minute:'2-digit',day:'2-digit',month:'short'}) : '—'; }
