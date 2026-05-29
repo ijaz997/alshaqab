@@ -3455,7 +3455,7 @@ async function deleteGift(id) {
   toast('Gift removed'); navigate('gifts');
 }
 
-async async function addGiftCollection(gid, giftId) {
+async function addGiftCollection(gid, giftId) {
   const ev = currentEvent();
   if (!ev) return;
   state.giftCollections.push({
@@ -5614,13 +5614,24 @@ function iosAnimatePage() {
 
 // BOOT
 (async () => {
-  await loadAll();
-  // Hide loading screen, show login
-  document.getElementById('loadingScreen').style.display = 'none';
-  document.getElementById('loginPage').style.display = 'flex';
-  ['loginUser','loginPass'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
-  });
+  // Timeout: if loading takes >15s, show error instead of spinning forever
+  const loadTimeout = setTimeout(() => {
+    document.getElementById('loadingScreen').innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:48px">⚠️</div><h2 style="color:#8d1738;margin:16px 0 8px">Connection Problem</h2><p style="color:#666;margin-bottom:20px">Cannot connect to the database.<br>Check your internet connection and try again.</p><button onclick="location.reload()" style="background:#8d1738;color:white;border:none;padding:12px 28px;border-radius:8px;font-size:16px;cursor:pointer">🔄 Retry</button></div>';
+  }, 15000);
+  try {
+    await loadAll();
+    clearTimeout(loadTimeout);
+    // Hide loading screen, show login
+    document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('loginPage').style.display = 'flex';
+    ['loginUser','loginPass'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+    });
+  } catch(bootErr) {
+    clearTimeout(loadTimeout);
+    console.error('Boot error:', bootErr);
+    document.getElementById('loadingScreen').innerHTML = '<div style="text-align:center;padding:40px"><div style="font-size:48px">❌</div><h2 style="color:#8d1738;margin:16px 0 8px">Startup Error</h2><p style="color:#666;margin-bottom:8px">' + (bootErr.message || bootErr) + '</p><button onclick="location.reload()" style="background:#8d1738;color:white;border:none;padding:12px 28px;border-radius:8px;font-size:16px;cursor:pointer">🔄 Retry</button></div>';
+  }
 })();
 </script>
 </body>
